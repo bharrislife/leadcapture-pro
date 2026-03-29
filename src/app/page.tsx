@@ -31,9 +31,11 @@ export default function Home() {
                 </li>
               ))}
             </ul>
-            <Button size="lg" className="h-12 px-8 text-base font-semibold">
-              Buy Now
-            </Button>
+            <a href="/signup">
+              <Button size="lg" className="h-12 px-8 text-base font-semibold">
+                Get Started
+              </Button>
+            </a>
           </div>
 
           {/* App screenshot placeholder */}

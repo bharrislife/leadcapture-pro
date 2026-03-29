@@ -3,11 +3,20 @@
 import { useState, useEffect } from 'react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { createBrowserClient } from '@supabase/auth-helpers-nextjs';
+import { useRouter } from 'next/navigation';
+
+interface Event {
+  id: number
+  name: string
+}
 
 export default function ScanPage() {
     const [scanning, setScanning] = useState(false);
     const [lastScan, setLastScan] = useState<any>(null);
     const [manualEntry, setManualEntry] = useState(false);
+    const [events, setEvents] = useState<Event[]>([]);
+    const [selectedEvent, setSelectedEvent] = useState<number | null>(null);
+    const [loading, setLoading] = useState(true);
     const [formData, setFormData] = useState({
         name: '',
         company: '',
@@ -16,10 +25,35 @@ export default function ScanPage() {
         notes: ''
     });
 
+    const router = useRouter();
     const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
+
+    useEffect(() => {
+        const checkAuth = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                router.push('/login');
+                return;
+            }
+            
+            // Load user's events
+            const { data: eventsData } = await supabase
+                .from('events')
+                .select('id, name')
+                .order('name');
+            
+            if (eventsData && eventsData.length > 0) {
+                setEvents(eventsData);
+                setSelectedEvent(eventsData[0].id);
+            }
+            setLoading(false);
+        };
+        
+        checkAuth();
+    }, []);
 
     useEffect(() => {
         if (scanning) {
@@ -42,21 +76,18 @@ export default function ScanPage() {
     }, [scanning]);
 
     const onScanSuccess = async (decodedText: string) => {
-        // Parse vCard format
         const contact = parseVCard(decodedText);
 
         if (contact) {
             await saveLead(contact);
             setLastScan(contact);
-
-            // Stop scanning briefly to show success
             setScanning(false);
             setTimeout(() => setScanning(true), 2000);
         }
     };
 
     const onScanError = (err: any) => {
-        // Ignore errors (camera permission, bad scans, etc)
+        // Ignore errors
     };
 
     const parseVCard = (vcard: string) => {
@@ -78,6 +109,8 @@ export default function ScanPage() {
     };
 
     const saveLead = async (contact: any) => {
+        if (!selectedEvent) return;
+
         const { error } = await supabase
             .from('leads')
             .insert({
@@ -86,7 +119,7 @@ export default function ScanPage() {
                 email: contact.email || '',
                 phone: contact.phone || '',
                 notes: contact.notes || '',
-                event_id: 1, // TODO: Get from current event
+                event_id: selectedEvent,
                 scanned_at: new Date().toISOString()
             });
 
@@ -97,32 +130,74 @@ export default function ScanPage() {
 
     const handleManualSave = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!selectedEvent) {
+            alert('Please select an event first');
+            return;
+        }
         await saveLead(formData);
         setLastScan(formData);
         setFormData({ name: '', company: '', email: '', phone: '', notes: '' });
         setManualEntry(false);
     };
 
+    if (loading) {
+        return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    }
+
     return (
         <div className="min-h-screen bg-gray-50 p-4">
             <div className="max-w-md mx-auto">
-                <h1 className="text-2xl font-bold mb-6">Scan Badges</h1>
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-2xl font-bold">Scan Badges</h1>
+                    <a href="/dashboard" className="text-blue-600 hover:underline text-sm">
+                        Dashboard
+                    </a>
+                </div>
+
+                {/* Event Selector */}
+                {events.length > 0 ? (
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium mb-1">Event</label>
+                        <select
+                            value={selectedEvent || ''}
+                            onChange={(e) => setSelectedEvent(Number(e.target.value))}
+                            className="w-full p-3 border rounded-lg bg-white"
+                        >
+                            {events.map(event => (
+                                <option key={event.id} value={event.id}>
+                                    {event.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                ) : (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                        <p className="text-yellow-800">
+                            No events yet.{' '}
+                            <a href="/dashboard" className="underline font-medium">
+                                Create one in Dashboard
+                            </a>
+                        </p>
+                    </div>
+                )}
 
                 {/* Scanner Toggle */}
                 <div className="mb-4 flex gap-2">
                     <button
                         onClick={() => { setScanning(!scanning); setManualEntry(false); }}
+                        disabled={!selectedEvent}
                         className={`flex-1 py-3 rounded-lg font-medium ${scanning
                                 ? 'bg-red-600 text-white'
                                 : 'bg-blue-600 text-white'
-                            }`}
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
                     >
                         {scanning ? 'Stop Scanning' : 'Start Scanning'}
                     </button>
 
                     <button
                         onClick={() => { setManualEntry(!manualEntry); setScanning(false); }}
-                        className="flex-1 py-3 rounded-lg font-medium bg-gray-600 text-white"
+                        disabled={!selectedEvent}
+                        className="flex-1 py-3 rounded-lg font-medium bg-gray-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         Manual Entry
                     </button>
@@ -207,6 +282,7 @@ export default function ScanPage() {
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-gray-700">
                         <p className="font-semibold mb-2">How to use:</p>
                         <ol className="list-decimal ml-4 space-y-1">
+                            <li>Select an event above</li>
                             <li>Click "Start Scanning" to use camera</li>
                             <li>Point at QR code on attendee badge</li>
                             <li>Contact info saves automatically</li>
