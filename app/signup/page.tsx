@@ -18,25 +18,27 @@ export default function SignupPage() {
     setLoading(true)
     setError('')
 
-    // First check if user already exists
-    const { data: existingUser } = await supabase.auth.getUser(email)
-    
-    if (existingUser.user) {
-      setError('An account with this email already exists. Please sign in instead.')
-      setLoading(false)
-      return
-    }
-
-    const { error } = await supabase.auth.signUp({
+    const { error, data } = await supabase.auth.signUp({
       email,
       password,
     })
 
     if (error) {
-      setError(error.message)
+      // Check for user already exists error
+      if (error.message.includes('already been registered') || 
+          error.message.includes('already exists') ||
+          error.status === 422) {
+        setError('An account with this email already exists. Please sign in instead.')
+      } else {
+        setError(error.message)
+      }
+      setLoading(false)
+    } else if (data.user) {
+      // User created but needs email confirmation
+      setSuccess(true)
       setLoading(false)
     } else {
-      setSuccess(true)
+      setError('Something went wrong. Please try again.')
       setLoading(false)
     }
   }
