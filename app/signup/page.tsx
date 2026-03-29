@@ -21,6 +21,9 @@ export default function SignupPage() {
     const { error, data } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: 'http://localhost:3000/auth'
+      }
     })
 
     if (error) {
@@ -34,8 +37,14 @@ export default function SignupPage() {
       }
       setLoading(false)
     } else if (data.user) {
-      // User created but needs email confirmation
-      setSuccess(true)
+      // User created - check if email confirmation is required
+      // If no session, email confirmation is needed
+      if (!data.session) {
+        setSuccess(true)
+      } else {
+        // Auto-confirmed, redirect to dashboard
+        router.push('/dashboard')
+      }
       setLoading(false)
     } else {
       setError('Something went wrong. Please try again.')
