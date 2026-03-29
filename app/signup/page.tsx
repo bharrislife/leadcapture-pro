@@ -18,6 +18,15 @@ export default function SignupPage() {
     setLoading(true)
     setError('')
 
+    // First check if user already exists
+    const { data: existingUser } = await supabase.auth.getUser(email)
+    
+    if (existingUser.user) {
+      setError('An account with this email already exists. Please sign in instead.')
+      setLoading(false)
+      return
+    }
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
